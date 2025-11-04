@@ -20,7 +20,17 @@ function saveVotes(votes) {
   localStorage.setItem('votes', JSON.stringify(votes));
 }
 
-// Register
+// Authentication Helpers
+function checkAuth() {
+  if (!localStorage.getItem('currentUser')) {
+    alert('Please login first.');
+    window.location.href = 'index.html';
+    return false;
+  }
+  return true;
+}
+
+// Register User
 function registerUser() {
   const username = document.getElementById('reg_username').value.trim();
   const password = document.getElementById('reg_password').value.trim();
@@ -40,7 +50,7 @@ function registerUser() {
   document.getElementById('reg_password').value = '';
 }
 
-// Login
+// Login User
 function loginUser() {
   const username = document.getElementById('login_username').value.trim();
   const password = document.getElementById('login_password').value.trim();
@@ -53,35 +63,34 @@ function loginUser() {
   }
 }
 
-// Logout
+// Logout User
 function logout() {
   localStorage.removeItem('currentUser');
   window.location.href = 'index.html';
 }
 
-// Auth Check
-function checkAuth() {
-  if (!localStorage.getItem('currentUser')) {
-    alert('Please login first.');
-    window.location.href = 'index.html';
-    return false;
-  }
-  return true;
-}
+// Election data global cache for search
+let allElections = [];
 
-// Load Elections and show votes and buttons
+// Load Elections from storage and display
 function loadElections() {
   if (!checkAuth()) return;
 
+  allElections = getElections();
+  displayElections(allElections);
+}
+
+// Display passed elections list
+function displayElections(elections) {
   const container = document.getElementById('elections-container');
   container.innerHTML = '';
-  const elections = getElections();
   const now = new Date();
   const votes = getVotes();
   const user = localStorage.getItem('currentUser');
 
   if (!elections.length) {
-    container.innerHTML = '<p>No elections available currently.</p>';
+    container.innerHTML = '<p>No elections found.</p>';
+    clearChart();
     return;
   }
 
@@ -90,7 +99,7 @@ function loadElections() {
     const userVotes = votes[election.id] || [];
     const hasVoted = userVotes.some(v => v.user === user);
 
-    let card = document.createElement('div');
+    const card = document.createElement('div');
     card.className = 'election-card';
 
     let html = `<h3>${election.name}</h3>
@@ -102,7 +111,7 @@ function loadElections() {
       html += '<p>You have already voted.</p>';
     } else {
       election.candidates.forEach(c => {
-        html += `<button onclick="castVote('${election.id}', '${c.name}')">Vote for ${c.name}</button>`;
+        html += `<button class="vote-btn" onclick="confirmVote('${election.id}','${c.name}')">Vote for ${c.name}</button>`;
       });
     }
 
@@ -113,19 +122,49 @@ function loadElections() {
     });
     html += '</ul>';
 
-    html += `<button style="background-color:#2a6ebb; color:#fff;" onclick="showResultsChart('${election.id}')">Show Chart</button>`;
+    html += `<button class="show-chart-btn" onclick="showResultsChart('${election.id}')">Show Chart</button>`;
+    html += `<button class="delete-election-btn" onclick="deleteElection('${election.id}')">Delete Election</button>`;
 
     card.innerHTML = html;
     container.appendChild(card);
   });
 
-  // Show chart for first election if available
-  if (elections.length > 0) {
+  // Show chart for first election automatically
+  if (elections.length) {
     showResultsChart(elections[0].id);
   }
 }
 
-// Vote function
+// Voting Confirmation Modal Logic
+let pendingVote = null;
+
+function confirmVote(electionId, candidateName) {
+  pendingVote = { electionId, candidateName };
+  const modal = document.getElementById('voteConfirmModal');
+  const confirmText = document.getElementById('confirmText');
+  confirmText.textContent = `Are you sure you want to vote for "${candidateName}"?`;
+  modal.style.display = 'flex';
+}
+
+document.getElementById('confirmYes').onclick = () => {
+  if (pendingVote) {
+    castVote(pendingVote.electionId, pendingVote.candidateName);
+    pendingVote = null;
+    closeModal();
+  }
+};
+
+document.getElementById('confirmNo').onclick = () => {
+  pendingVote = null;
+  closeModal();
+};
+
+function closeModal() {
+  const modal = document.getElementById('voteConfirmModal');
+  modal.style.display = 'none';
+}
+
+// Cast Vote
 function castVote(electionId, candidateName) {
   if (!checkAuth()) return;
 
@@ -144,6 +183,50 @@ function castVote(electionId, candidateName) {
   alert(`Voted for ${candidateName} successfully!`);
   loadElections();
   showResultsChart(electionId);
+}
+
+// Delete Election
+function deleteElection(electionId) {
+  if (!checkAuth()) return;
+
+  if (!confirm('Are you sure you want to delete this election? This action cannot be undone.')) {
+    return;
+  }
+
+  let elections = getElections();
+  elections = elections.filter(e => e.id !== electionId);
+  saveElections(elections);
+
+  let votes = getVotes();
+  delete votes[electionId];
+  saveVotes(votes);
+
+  alert('Election deleted successfully.');
+  loadElections();
+
+  const canvas = document.getElementById('resultsChart');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// Search/filter elections
+function filterElections() {
+  const input = document.getElementById('searchInput');
+  if(!input) return;
+  const query = input.value.toLowerCase();
+  const filtered = allElections.filter(e => e.name.toLowerCase().includes(query));
+  displayElections(filtered);
+}
+
+// Clear Chart if needed
+function clearChart() {
+  const canvas = document.getElementById('resultsChart');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 // Add Election page logic
@@ -192,12 +275,10 @@ function saveElection() {
 
   saveElections(elections);
   alert('Election added successfully');
-  // reset inputs
   document.getElementById('election_name').value = '';
   document.getElementById('election_due_date').value = '';
   newCandidates = [];
   updateCandidatesList();
-  // Optionally redirect to elections page
   window.location.href = 'elections.html';
 }
 
@@ -221,6 +302,7 @@ function createDefaultElections() {
   }
 }
 
+// Run on page load
 window.onload = function() {
   createDefaultElections();
 
@@ -233,3 +315,4 @@ window.onload = function() {
     checkAuth();
   }
 };
+
