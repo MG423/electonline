@@ -260,7 +260,7 @@ function saveElection() {
   const name = document.getElementById('election_name').value.trim();
   const dueDate = document.getElementById('election_due_date').value;
 
-  if (!name || !dueDate || newCandidates.length === 0) {
+  if (!name || !dueDate || newCandidates.length < 1) {
     alert('Please fill all fields and add candidates.');
     return;
   }
@@ -274,7 +274,7 @@ function saveElection() {
   });
 
   saveElections(elections);
-  alert('Election added successfully');
+  alert('Election added successfully!');
   document.getElementById('election_name').value = '';
   document.getElementById('election_due_date').value = '';
   newCandidates = [];
@@ -315,4 +315,3 @@ window.onload = function() {
     checkAuth();
   }
 };
-
